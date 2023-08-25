@@ -5,8 +5,8 @@ Uma implementação personalizada do GeoNetwork, compilado diretamente do códig
 Autor: Carlos Eduardo Mota
 
 ## Build Args
-- TOMCAT_IMAGE_TAG=9-jre11-temurin-jammy
-- MAVEN_IMAGE_TAG=3.8-eclipse-temurin-11
+- TOMCAT_IMAGE_TAG=8.5-jre8-temurin-jammy
+- MAVEN_IMAGE_TAG=3.8-eclipse-temurin-8
 - MAVEN_OPTS="-Xmx512M"
 - GEONETWORK_GIT_URL=https://github.com/geonetwork/core-geonetwork.git
 - GEONETWORK_VERSION=3.10.2
