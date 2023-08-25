@@ -48,32 +48,27 @@ RUN sed -i -r "s/jdbc.database=.*$/jdbc.database=\/tmp\/gn/g" web/target/geonetw
 FROM docker.io/library/tomcat:${TOMCAT_IMAGE_TAG} AS RELEASE
 
 ARG GEONETWORK_VERSION
-
 ARG DATA_DIR=/srv/geonetwork
 
-LABEL org.opencontainers.image.title "Geonetwork INDE"
-LABEL org.opencontainers.image.description "Geonetwork adaptado para aplicação de perfis de metadados MGB(1,2) da INDE"
+LABEL org.opencontainers.image.title "Geonetwork SGB/CPRM"
+LABEL org.opencontainers.image.description "Geonetwork customizado pelo SGB/CPRM"
 LABEL org.opencontainers.image.vendor "SGB/CPRM"
 LABEL org.opencontainers.image.version $GEONETWORK_VERSION
-LABEL org.opencontainers.image.source https://github.com/cmotadev/geonetwork
-LABEL org.opencontainers.image.authors "Carlos Eduardo Mota <carlos.mota@cprm.gov.br>"
+LABEL org.opencontainers.image.source https://github.com/nds-cprm/geonetwork-oci
+LABEL org.opencontainers.image.authors "Carlos Eduardo Mota <carlos.mota@sgb.gov.br>"
 
-ENV GEONETWORK_DATA_DIR="${DATA_DIR}/data" \
-    GEONETWORK_LUCENE_DIR="${DATA_DIR}/lucene" \
+ENV JAVA_OPTS="-server -Djava.awt.headless=true -Xms2048m -Xmx2048m -XX:NewRatio=2 -XX:SurvivorRatio=10" \
     GEONETWORK_DB_TYPE="h2"
 
 # Copy built
-COPY --from=BUILDER /root/geonetwork/web/target/geonetwork/ ${CATALINA_HOME}/webapps/geonetwork/
+COPY --from=BUILDER /root/geonetwork/web/target/geonetwork/ ./webapps/geonetwork/
 
 # Entrypoint
 COPY docker-entrypoint.sh /
 
-RUN mkdir -p $GEONETWORK_DATA_DIR $GEONETWORK_LUCENE_DIR && \
-    chgrp -R 0 $GEONETWORK_DATA_DIR $GEONETWORK_LUCENE_DIR && \
-    chmod -R g=u $GEONETWORK_DATA_DIR $GEONETWORK_LUCENE_DIR && \
-    chmod +x /docker-entrypoint.sh
+# TODO: Adicionar XMLStarlet
 
-ENV CATALINA_OPTS="-Xms2048m -Xmx2048m -XX:NewRatio=2 -XX:SurvivorRatio=10"
+RUN chmod +x /docker-entrypoint.sh
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
