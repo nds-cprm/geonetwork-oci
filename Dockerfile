@@ -4,6 +4,7 @@ ARG TOMCAT_IMAGE_TAG=8.5-jre8-temurin-jammy
 
 FROM docker.io/library/maven:${MAVEN_IMAGE_TAG} AS BUILDER
 
+ARG GEONETWORK_GIT_URL=https://github.com/geonetwork/core-geonetwork.git
 ARG GEONETWORK_VERSION=3.10.2
 ARG MAVEN_OPTS="-Xmx512M"
 
@@ -11,7 +12,7 @@ ENV MAVEN_OPTS ${MAVEN_OPTS}
 
 WORKDIR /root
 
-RUN git clone https://github.com/geonetwork/core-geonetwork.git geonetwork
+RUN git clone ${GEONETWORK_GIT_URL} geonetwork
 
 WORKDIR /root/geonetwork
 
