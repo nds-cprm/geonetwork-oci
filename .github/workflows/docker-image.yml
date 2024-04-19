@@ -34,6 +34,8 @@ jobs:
         push: true
         # List of tags
         tags: ${{ env.DOCKER_IMAGE_NAME }}:3.10.2,${{ env.DOCKER_IMAGE_NAME }}:3.10.2-temurin
+        cache-from: type=registry,ref=user/app:latest
+        cache-to: type=inline
         
     - name: Analyze for critical and high CVEs
       id: docker-scout-cves
