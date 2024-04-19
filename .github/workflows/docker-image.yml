@@ -33,7 +33,7 @@ jobs:
         # Push is a shorthand for --output=type=registry
         push: true
         # List of tags
-        tags: $DOCKER_IMAGE_NAME:3.10.2,$DOCKER_IMAGE_NAME:3.10.2-temurin
+        tags: ${{ env.DOCKER_IMAGE_NAME }}:3.10.2,${{ env.DOCKER_IMAGE_NAME }}:3.10.2-temurin
         
     - name: Analyze for critical and high CVEs
       id: docker-scout-cves
@@ -41,7 +41,7 @@ jobs:
       uses: docker/scout-action@v1
       with:
         command: cves
-        image: $DOCKER_IMAGE_NAME:3.10.2 # ${{ steps.meta.outputs.tags }}
+        image: ${{ env.DOCKER_IMAGE_NAME }}:3.10.2 # ${{ steps.meta.outputs.tags }}
         sarif-file: sarif.output.json
         summary: true
     
