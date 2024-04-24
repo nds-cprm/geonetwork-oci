@@ -32,24 +32,16 @@ RUN sed -i 's/<pg\.version>[^<]*</<pg.version>42.2.18</g' pom.xml && \
     sed -i 's/http:\/\/download.osgeo.org\/webdav\/geotools\//https:\/\/repo.osgeo.org\/repository\/release/g' pom.xml && \
     sed -i 's/https:\/\/packages.georchestra.org\/artifactory\/mapfish-print/https:\/\/artifactory.georchestra.org\/artifactory\/geonetwork-github-cache/g' pom.xml && \
     sed -i 's/<log4j2\.version>[^<]*</<log4j2\.version>2.17.1</g' pom.xml && \
-    mvn clean install -DskipTests
-
-# Enable Rootless & move the default h2 db to /tmp (avoid change tomcat dir permissions)
-RUN sed -i -r "s/jdbc.database=.*$/jdbc.database=\/tmp\/gn/g" web/target/geonetwork/WEB-INF/config-db/jdbc.properties && \
-    chgrp -R 0 \
-        web/target/geonetwork/WEB-INF/config-db/ \
-        web/target/geonetwork/WEB-INF/config-node/ \
-        web/target/geonetwork/WEB-INF/data/ && \
-    chmod -R g=u \
-        web/target/geonetwork/WEB-INF/config-db/ \
-        web/target/geonetwork/WEB-INF/config-node/ \
-        web/target/geonetwork/WEB-INF/data/
+    mvn clean install -DskipTests | tee install.log && \
+    mv install.log ./web/target/geonetwork/install.log
 
 
 FROM docker.io/library/tomcat:${TOMCAT_IMAGE_TAG} AS RELEASE
 
 ARG GEONETWORK_VERSION
-ARG DATA_DIR=/srv/geonetwork
+ARG GEONETWORK_DATA_DIR=/srv/geonetwork/data
+ARG GEONETWORK_UID=15000
+ARG GEONETWORK_GID=15000
 
 LABEL org.opencontainers.image.title "Geonetwork SGB/CPRM"
 LABEL org.opencontainers.image.description "Geonetwork customizado pelo SGB/CPRM"
@@ -59,7 +51,8 @@ LABEL org.opencontainers.image.source https://github.com/nds-cprm/geonetwork-oci
 LABEL org.opencontainers.image.authors "Carlos Eduardo Mota <carlos.mota@sgb.gov.br>"
 
 ENV JAVA_OPTS="-server -Djava.awt.headless=true -Xms2048m -Xmx2048m -XX:NewRatio=2 -XX:SurvivorRatio=10" \
-    GEONETWORK_DB_TYPE="h2"
+    GEONETWORK_DB_TYPE="h2" \
+    GEONETWORK_DATA_DIR=${GEONETWORK_DATA_DIR}
 
 # Copy built
 COPY --from=BUILDER /root/geonetwork/web/target/geonetwork/ ./webapps/geonetwork/
@@ -67,9 +60,25 @@ COPY --from=BUILDER /root/geonetwork/web/target/geonetwork/ ./webapps/geonetwork
 # Entrypoint
 COPY docker-entrypoint.sh /
 
-# TODO: Adicionar XMLStarlet
+# Enable Rootless & move the default h2 db to /tmp (avoid change tomcat dir permissions)
+RUN groupadd -g ${GEONETWORK_GID} geoserver && \
+    useradd -M -s /sbin/nologin -c "Geonetwork" \
+        -u ${GEONETWORK_UID} -g ${GEONETWORK_GID} -N geonetwork && \    
+    sed -i -r "s/jdbc.database=.*$/jdbc.database=\/tmp\/gn/g" ./webapps/geonetwork/WEB-INF/config-db/jdbc.properties && \
+    mkdir -p ${GEONETWORK_DATA_DIR} && \
+    chgrp -R ${GEONETWORK_GID} \
+        ./webapps/geonetwork/WEB-INF/config-db/ \
+        ./webapps/geonetwork/WEB-INF/config-node/ \
+        ./webapps/geonetwork/WEB-INF/data/ \
+        ${GEONETWORK_DATA_DIR} && \
+    chmod -R g=u \
+        ./webapps/geonetwork/WEB-INF/config-db/ \
+        ./webapps/geonetwork/WEB-INF/config-node/ \
+        ./webapps/geonetwork/WEB-INF/data/ \
+        ${GEONETWORK_DATA_DIR} && \
+    chmod +x /docker-entrypoint.sh
 
-RUN chmod +x /docker-entrypoint.sh
+USER geonetwork
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
