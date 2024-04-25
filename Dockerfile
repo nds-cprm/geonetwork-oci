@@ -61,7 +61,8 @@ COPY --from=BUILDER /root/geonetwork/web/target/geonetwork/ ./webapps/geonetwork
 COPY docker-entrypoint.sh /
 
 # Enable Rootless & move the default h2 db to /tmp (avoid change tomcat dir permissions)
-RUN groupadd -g ${GEONETWORK_GID} geoserver && \
+# TODO: add lucene mount point
+RUN groupadd -g ${GEONETWORK_GID} geonetwork && \
     useradd -M -s /sbin/nologin -c "Geonetwork" \
         -u ${GEONETWORK_UID} -g ${GEONETWORK_GID} -N geonetwork && \    
     sed -i -r "s/jdbc.database=.*$/jdbc.database=\/tmp\/gn/g" ./webapps/geonetwork/WEB-INF/config-db/jdbc.properties && \
