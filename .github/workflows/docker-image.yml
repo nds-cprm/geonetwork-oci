@@ -60,7 +60,7 @@ jobs:
         uses: docker/build-push-action@v5.3.0
         with:
           # Build's context is the set of files located in the specified PATH or URL
-          context: .
+          context: inde/
           # Path to the Dockerfile
           file: inde/Dockerfile
           build-args: |
