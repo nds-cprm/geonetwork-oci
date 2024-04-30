@@ -60,9 +60,9 @@ jobs:
         uses: docker/build-push-action@v5.3.0
         with:
           # Build's context is the set of files located in the specified PATH or URL
-          context: inde
+          context: .
           # Path to the Dockerfile
-          file: Dockerfile
+          file: inde/Dockerfile
           build-args: |
             GEONETWORK_IMAGE_REPOSITORY=${{ env.DOCKER_IMAGE_NAME }}
             GEONETWORK_IMAGE_TAG=${{ matrix.version }}
