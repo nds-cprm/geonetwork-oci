@@ -2,13 +2,13 @@
 ARG MAVEN_IMAGE_TAG=3.8-eclipse-temurin-8
 ARG TOMCAT_IMAGE_TAG=8.5-jre8-temurin-jammy
 
-FROM docker.io/library/maven:${MAVEN_IMAGE_TAG} AS BUILDER
+FROM docker.io/library/maven:${MAVEN_IMAGE_TAG} AS builder
 
 ARG GEONETWORK_GIT_URL=https://github.com/geonetwork/core-geonetwork.git
 ARG GEONETWORK_VERSION=3.10.2
 ARG MAVEN_OPTS="-Xmx512M"
 
-ENV MAVEN_OPTS ${MAVEN_OPTS}
+ENV MAVEN_OPTS=${MAVEN_OPTS}
 
 WORKDIR /root
 
@@ -36,26 +36,26 @@ RUN sed -i 's/<pg\.version>[^<]*</<pg.version>42.2.18</g' pom.xml && \
     mv install.log ./web/target/geonetwork/install.log
 
 
-FROM docker.io/library/tomcat:${TOMCAT_IMAGE_TAG} AS RELEASE
+FROM docker.io/library/tomcat:${TOMCAT_IMAGE_TAG} AS release
 
 ARG GEONETWORK_VERSION
 ARG GEONETWORK_DATA_DIR=/srv/geonetwork/data
 ARG GEONETWORK_UID=15000
 ARG GEONETWORK_GID=15000
 
-LABEL org.opencontainers.image.title "Geonetwork SGB/CPRM"
-LABEL org.opencontainers.image.description "Geonetwork customizado pelo SGB/CPRM"
-LABEL org.opencontainers.image.vendor "SGB/CPRM"
-LABEL org.opencontainers.image.version $GEONETWORK_VERSION
-LABEL org.opencontainers.image.source https://github.com/nds-cprm/geonetwork-oci
-LABEL org.opencontainers.image.authors "Carlos Eduardo Mota <carlos.mota@sgb.gov.br>"
+LABEL org.opencontainers.image.title="Geonetwork SGB/CPRM"
+LABEL org.opencontainers.image.description="Geonetwork customizado pelo SGB/CPRM"
+LABEL org.opencontainers.image.vendor="SGB/CPRM"
+LABEL org.opencontainers.image.version=$GEONETWORK_VERSION
+LABEL org.opencontainers.image.source=https://github.com/nds-cprm/geonetwork-oci
+LABEL org.opencontainers.image.authors="Carlos Eduardo Mota <carlos.mota@sgb.gov.br>"
 
 ENV JAVA_OPTS="-server -Djava.awt.headless=true -Xms2048m -Xmx2048m -XX:NewRatio=2 -XX:SurvivorRatio=10" \
     GEONETWORK_DB_TYPE="h2" \
     GEONETWORK_DATA_DIR=${GEONETWORK_DATA_DIR}
 
 # Copy built
-COPY --from=BUILDER /root/geonetwork/web/target/geonetwork/ ./webapps/geonetwork/
+COPY --from=builder /root/geonetwork/web/target/geonetwork/ ./webapps/geonetwork/
 
 # Entrypoint
 COPY docker-entrypoint.sh /
