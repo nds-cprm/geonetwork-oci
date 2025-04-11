@@ -40,8 +40,6 @@ FROM docker.io/library/tomcat:${TOMCAT_IMAGE_TAG} AS release
 
 ARG GEONETWORK_VERSION
 ARG GEONETWORK_DATA_DIR=/srv/geonetwork/data
-ARG GEONETWORK_UID=15000
-ARG GEONETWORK_GID=15000
 
 LABEL org.opencontainers.image.title="Geonetwork SGB/CPRM"
 LABEL org.opencontainers.image.description="Geonetwork customizado pelo SGB/CPRM"
@@ -62,24 +60,14 @@ COPY docker-entrypoint.sh /
 
 # Enable Rootless & move the default h2 db to /tmp (avoid change tomcat dir permissions)
 # TODO: add lucene mount point
-RUN groupadd -g ${GEONETWORK_GID} geonetwork && \
-    useradd -M -s /sbin/nologin -c "Geonetwork" \
-        -u ${GEONETWORK_UID} -g ${GEONETWORK_GID} -N geonetwork && \    
-    sed -i -r "s/jdbc.database=.*$/jdbc.database=\/tmp\/gn/g" ./webapps/geonetwork/WEB-INF/config-db/jdbc.properties && \
+RUN sed -i -r "s/jdbc.database=.*$/jdbc.database=\/tmp\/gn/g" ./webapps/geonetwork/WEB-INF/config-db/jdbc.properties && \
     mkdir -p ${GEONETWORK_DATA_DIR} && \
-    chgrp -R ${GEONETWORK_GID} \
-        ./webapps/geonetwork/WEB-INF/config-db/ \
-        ./webapps/geonetwork/WEB-INF/config-node/ \
-        ./webapps/geonetwork/WEB-INF/data/ \
-        ${GEONETWORK_DATA_DIR} && \
     chmod -R g=u \
         ./webapps/geonetwork/WEB-INF/config-db/ \
         ./webapps/geonetwork/WEB-INF/config-node/ \
         ./webapps/geonetwork/WEB-INF/data/ \
         ${GEONETWORK_DATA_DIR} && \
     chmod +x /docker-entrypoint.sh
-
-USER geonetwork
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
