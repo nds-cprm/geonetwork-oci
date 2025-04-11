@@ -3,11 +3,14 @@ ARG GEONETWORK_IMAGE_TAG=3.10.2
 
 FROM ${GEONETWORK_IMAGE_REPOSITORY}:${GEONETWORK_IMAGE_TAG}
 
+ARG GEONETWORK_IMAGE_TAG
+
 USER root
 
-LABEL org.opencontainers.image.title "Geonetwork INDE"
-LABEL org.opencontainers.image.description "Geonetwork customizado pelo SGB/CPRM para uso na INDE"
-LABEL org.opencontainers.image.vendor "SGB/CPRM"
+LABEL org.opencontainers.image.title="Geonetwork INDE"
+LABEL org.opencontainers.image.description="Geonetwork customizado pelo SGB/CPRM para uso na INDE"
+LABEL org.opencontainers.image.version="$GEONETWORK_IMAGE_TAG-inde"
+LABEL org.opencontainers.image.vendor="SGB/CPRM"
 
 # INDE Metadata profiles and patches
 # https://inde.gov.br/Suporte/InstalacaoGN
