@@ -53,6 +53,7 @@ jobs:
             ${{ env.DOCKER_IMAGE_NAME }}:${{ matrix.version }}
           cache-from: type=registry,ref=${{ env.DOCKER_IMAGE_NAME }}:${{ matrix.version }}
           cache-to: type=inline
+          platforms: linux/amd64,linux/arm64
 
       - name: Build and push GN-INDE custom images
         # You may pin to the exact commit or the version.
@@ -76,6 +77,7 @@ jobs:
             ${{ env.DOCKER_IMAGE_NAME }}:${{ matrix.version }}-inde
           cache-from: type=registry,ref=${{ env.DOCKER_IMAGE_NAME }}:${{ matrix.version }}-inde
           cache-to: type=inline
+          platforms: linux/amd64,linux/arm64
       
       - name: Analyze for critical and high CVEs
         id: docker-scout-cves
