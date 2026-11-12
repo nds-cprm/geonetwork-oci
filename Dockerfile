@@ -23,6 +23,9 @@ RUN set -xe && \
 
 VOLUME ["/root/.m2"]
 
+# Fail the build when any command in a pipeline fails (mvn | tee)
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # Mods and builds
 # Change obsolete PostgreSQL JDBC and old repos
 # Force log4j to 2.17.1 
@@ -34,6 +37,8 @@ RUN sed -i 's/<pg\.version>[^<]*</<pg.version>42.2.18</g' pom.xml && \
     sed -i 's/<log4j2\.version>[^<]*</<log4j2\.version>2.17.1</g' pom.xml && \
     mvn clean install -DskipTests | tee install.log && \
     mv install.log ./web/target/geonetwork/install.log
+
+SHELL ["/bin/sh", "-c"]
 
 
 FROM docker.io/library/tomcat:${TOMCAT_IMAGE_TAG} AS release
