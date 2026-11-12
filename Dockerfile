@@ -35,8 +35,7 @@ RUN sed -i 's/<pg\.version>[^<]*</<pg.version>42.2.18</g' pom.xml && \
     sed -i 's/http:\/\/download.osgeo.org\/webdav\/geotools\//https:\/\/repo.osgeo.org\/repository\/release/g' pom.xml && \
     sed -i 's/https:\/\/packages.georchestra.org\/artifactory\/mapfish-print/https:\/\/artifactory.georchestra.org\/artifactory\/geonetwork-github-cache/g' pom.xml && \
     sed -i 's/<log4j2\.version>[^<]*</<log4j2\.version>2.17.1</g' pom.xml && \
-    mvn clean install -DskipTests | tee install.log && \
-    mv install.log ./web/target/geonetwork/install.log
+    mvn clean install -DskipTests | tee install.log
 
 SHELL ["/bin/sh", "-c"]
 
@@ -60,6 +59,9 @@ ENV JAVA_OPTS="-server -Djava.awt.headless=true -Xms2048m -Xmx2048m -XX:NewRatio
 # Copy built
 COPY --from=builder /root/geonetwork/web/target/geonetwork/ ./webapps/geonetwork/
 
+# Build log, kept outside the webapp so Tomcat does not serve it
+COPY --from=builder /root/geonetwork/install.log /install.log
+
 # Entrypoint
 COPY docker-entrypoint.sh /
 
@@ -73,6 +75,37 @@ RUN sed -i -r "s/jdbc.database=.*$/jdbc.database=\/tmp\/gn/g" ./webapps/geonetwo
         ./webapps/geonetwork/WEB-INF/data/ \
         ${GEONETWORK_DATA_DIR} && \
     chmod +x /docker-entrypoint.sh
+
+# Send all logs to stdout instead of files under logs/
+# - Tomcat JULI: console handler only
+# - Access log: written to the process stdout
+# - Geonetwork log4j: fileAppender refs become consoleAppender, dropping the duplicates
+RUN sed -i -r \
+        -e 's/^handlers = .*/handlers = java.util.logging.ConsoleHandler/' \
+        -e 's/^\.handlers = .*/.handlers = java.util.logging.ConsoleHandler/' \
+        -e 's/^(org\.apache\.catalina\.core\.ContainerBase\..*\.handlers) = .*/\1 = java.util.logging.ConsoleHandler/' \
+        ./conf/logging.properties && \
+    sed -i -r \
+        -e 's/(AccessLogValve" )directory="logs"/\1directory="\/proc\/self\/fd"/' \
+        -e 's/prefix="localhost_access_log" suffix=".txt"/prefix="1" suffix="" rotatable="false" buffered="false"/' \
+        ./conf/server.xml && \
+    for f in ./webapps/geonetwork/WEB-INF/classes/log4j*.xml; do \
+        sed 's/<appender-ref ref="fileAppender"\/>/<appender-ref ref="consoleAppender"\/>/' "$f" | \
+            awk '/<appender-ref ref="consoleAppender"\/>/ && $0 == prev { next } { prev = $0; print }' > "$f.tmp" && \
+        mv "$f.tmp" "$f"; \
+    done
+
+# nss_wrapper: passwd/group entries for UIDs absent from /etc/passwd (OpenShift arbitrary UID)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libnss-wrapper && \
+    rm -rf /var/lib/apt/lists/*
+
+USER 1000:0
+
+# Anonymous API call backed by the database settings. The built-in /criticalhealthcheck
+# is not used: its Lucene check fails while the catalog is empty
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD curl -fsS -o /dev/null -H "Accept: application/json" http://localhost:8080/geonetwork/srv/api/0.1/site || exit 1
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 

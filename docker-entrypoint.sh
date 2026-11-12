@@ -1,6 +1,24 @@
 #!/bin/bash
 set -ef -o pipefail
 
+# User: register the running UID through nss_wrapper when it has no passwd entry
+if ! getent passwd "$(id -u)" > /dev/null; then
+    export HOME=/tmp
+    NSS_WRAPPER_DIR=$(mktemp -d)
+    export NSS_WRAPPER_PASSWD="${NSS_WRAPPER_DIR}/passwd"
+    export NSS_WRAPPER_GROUP="${NSS_WRAPPER_DIR}/group"
+
+    cp /etc/passwd "${NSS_WRAPPER_PASSWD}"
+    cp /etc/group "${NSS_WRAPPER_GROUP}"
+    echo "geonetwork:x:$(id -u):$(id -g):Geonetwork:${HOME}:/sbin/nologin" >> "${NSS_WRAPPER_PASSWD}"
+
+    if ! getent group "$(id -g)" > /dev/null; then
+        echo "geonetwork:x:$(id -g):" >> "${NSS_WRAPPER_GROUP}"
+    fi
+
+    export LD_PRELOAD=libnss_wrapper.so
+fi
+
 # Filesystem
 if [[ -d ${GEONETWORK_DATA_DIR} ]]; then
     if [[ ! -r ${GEONETWORK_DATA_DIR} || ! -w ${GEONETWORK_DATA_DIR} ]]; then
