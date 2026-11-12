@@ -1,0 +1,3 @@
+# The base image only needs the entrypoint from this context
+*
+!docker-entrypoint.sh

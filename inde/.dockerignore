@@ -1,0 +1,3 @@
+# The INDE image only needs the overlay sources from this context
+*
+!src
