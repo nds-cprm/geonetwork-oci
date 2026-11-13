@@ -1,3 +1,4 @@
-# The base image only needs the entrypoint from this context
+# The base image only needs the entrypoint and the health check from this context
 *
 !docker-entrypoint.sh
+!healthcheck.sh

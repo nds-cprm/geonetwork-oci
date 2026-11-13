@@ -70,6 +70,9 @@ COPY --from=builder /root/geonetwork/install.log /install.log
 # Entrypoint
 COPY docker-entrypoint.sh /
 
+# Health check script, also usable by exec probes (OpenShift/Kubernetes)
+COPY healthcheck.sh /usr/local/bin/healthcheck
+
 # Database configured only through environment variables, resolved by Spring at startup, so
 # the webapp is never edited at runtime (read-only rootfs, restarts, any password characters):
 # - srv.xml imports config-db/${GEONETWORK_DB_TYPE}.xml (postgis.xml aliases postgres-postgis.xml)
@@ -105,7 +108,7 @@ RUN mkdir -p ${GEONETWORK_DATA_DIR} ./conf/Catalina/localhost && \
         ./webapps/geonetwork/WEB-INF/schemaplugin-uri-catalog.xml \
         ./webapps/geonetwork/images/harvesting/ \
         ${GEONETWORK_DATA_DIR} && \
-    chmod +x /docker-entrypoint.sh
+    chmod +x /docker-entrypoint.sh /usr/local/bin/healthcheck
 
 # Send all logs to stdout instead of files under logs/
 # - Tomcat JULI: console handler only
@@ -145,10 +148,11 @@ RUN apt-get update && \
 
 USER 1000:0
 
-# Anonymous API call backed by the database settings. The built-in /criticalhealthcheck
-# is not used: its Lucene check fails while the catalog is empty
+# Fails when the database is down and also when the GeoNetwork application startup failed
+# (see healthcheck.sh). The built-in /criticalhealthcheck is not used: its Lucene check fails
+# while the catalog is empty
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-    CMD curl -fsS -o /dev/null -H "Accept: application/json" http://localhost:8080/geonetwork/srv/api/0.1/site || exit 1
+    CMD ["healthcheck"]
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
