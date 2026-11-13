@@ -12,16 +12,12 @@ ENV MAVEN_OPTS=${MAVEN_OPTS}
 
 WORKDIR /root
 
-RUN git clone ${GEONETWORK_GIT_URL} geonetwork
+# Shallow clone of the release tag and its submodules
+RUN git clone --depth 1 --branch ${GEONETWORK_VERSION} \
+        --recurse-submodules --shallow-submodules \
+        ${GEONETWORK_GIT_URL} geonetwork
 
 WORKDIR /root/geonetwork
-
-RUN set -xe && \
-    git checkout tags/${GEONETWORK_VERSION} -b docker-builder && \
-    git submodule init && \
-    git submodule update
-
-VOLUME ["/root/.m2"]
 
 # Fail the build when any command in a pipeline fails (mvn | tee)
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -31,7 +27,9 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Force log4j to 2.17.1 
 # - https://security.snyk.io/vuln/SNYK-JAVA-ORGAPACHELOGGINGLOG4J-2314720
 # - https://snyk.io/blog/log4shell-remediation-cheat-sheet/
-RUN sed -i 's/<pg\.version>[^<]*</<pg.version>42.2.18</g' pom.xml && \
+# Maven repository kept in a BuildKit cache mount, reused across builds
+RUN --mount=type=cache,target=/root/.m2,sharing=locked \
+    sed -i 's/<pg\.version>[^<]*</<pg.version>42.2.18</g' pom.xml && \
     sed -i 's/http:\/\/download.osgeo.org\/webdav\/geotools\//https:\/\/repo.osgeo.org\/repository\/release/g' pom.xml && \
     sed -i 's/https:\/\/packages.georchestra.org\/artifactory\/mapfish-print/https:\/\/artifactory.georchestra.org\/artifactory\/geonetwork-github-cache/g' pom.xml && \
     sed -i 's/<log4j2\.version>[^<]*</<log4j2\.version>2.17.1</g' pom.xml && \
