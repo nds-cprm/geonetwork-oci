@@ -78,7 +78,8 @@ RUN sed -i -r "s/jdbc.database=.*$/jdbc.database=\/tmp\/gn/g" ./webapps/geonetwo
 # Send all logs to stdout instead of files under logs/
 # - Tomcat JULI: console handler only
 # - Access log: written to the process stdout
-# - Geonetwork log4j: fileAppender refs become consoleAppender, dropping the duplicates
+# - Geonetwork log4j: every logger also gets consoleAppender; fileAppender is kept (the admin
+#   console reads it) but writes a small rolling file under /tmp
 RUN sed -i -r \
         -e 's/^handlers = .*/handlers = java.util.logging.ConsoleHandler/' \
         -e 's/^\.handlers = .*/.handlers = java.util.logging.ConsoleHandler/' \
@@ -89,8 +90,8 @@ RUN sed -i -r \
         -e 's/prefix="localhost_access_log" suffix=".txt"/prefix="1" suffix="" rotatable="false" buffered="false"/' \
         ./conf/server.xml && \
     for f in ./webapps/geonetwork/WEB-INF/classes/log4j*.xml; do \
-        sed 's/<appender-ref ref="fileAppender"\/>/<appender-ref ref="consoleAppender"\/>/' "$f" | \
-            awk '/<appender-ref ref="consoleAppender"\/>/ && $0 == prev { next } { prev = $0; print }' > "$f.tmp" && \
+        sed 's|<param name="File" value="${log_dir}logs/geonetwork.log"/>|<param name="File" value="/tmp/geonetwork.log"/>\n    <param name="MaxFileSize" value="10MB"/>\n    <param name="MaxBackupIndex" value="1"/>|' "$f" | \
+            awk '/<appender-ref ref="fileAppender"\/>/ && prev !~ /<appender-ref ref="consoleAppender"\/>/ { l = $0; sub(/fileAppender/, "consoleAppender", l); print l } { prev = $0; print }' > "$f.tmp" && \
         mv "$f.tmp" "$f"; \
     done
 
