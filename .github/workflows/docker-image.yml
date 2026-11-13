@@ -3,95 +3,209 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "0 2 4 * *"
+  # Build-only checks (no push)
+  push:
+    branches: [main]
+    paths: &build-paths
+      - Dockerfile
+      - .dockerignore
+      - docker-entrypoint.sh
+      - healthcheck.sh
+      - inde/**
+      - .github/workflows/docker-image.yml
+  pull_request:
+    paths: *build-paths
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
 env:
   DOCKER_IMAGE_NAME: docker.io/ndscprm/geonetwork
+  # Only scheduled and manual runs publish images
+  PUBLISH: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+
 jobs:
-  docker:
-    runs-on: ubuntu-22.04
-    strategy:
-      max-parallel: 1
-      matrix:
-        version: 
-          - 3.10.2
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      timestamp: ${{ steps.datetime.outputs.timestamp }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}    
-    
       - name: Current DateTime
         id: datetime
-        uses: Kaven-Universe/github-action-current-date-time@v1
-        with:
-          format: "YYYYMMDD-HHmmss"
+        run: echo "timestamp=$(date -u +%Y%m%d-%H%M%S)" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push Geonetwork images
-        # You may pin to the exact commit or the version.
-        # uses: docker/build-push-action@2cdde995de11925a030ce8070c3d77a52ffcf1c0
-        uses: docker/build-push-action@v5.3.0
+  build:
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - 3.10.2
+        platform:
+          - linux/amd64
+          - linux/arm64
+        include:
+          - platform: linux/amd64
+            arch: amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Docker Hub
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@v4
         with:
-          # Build's context is the set of files located in the specified PATH or URL
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Export the base image as a local OCI layout, so the INDE build uses it
+      # instead of the image published on Docker Hub
+      - name: Build Geonetwork image (${{ matrix.platform }})
+        id: base
+        uses: docker/build-push-action@v7
+        with:
           context: .
-          # Path to the Dockerfile
           file: Dockerfile
           build-args: |
             GEONETWORK_VERSION=${{ matrix.version }}
-          # Always attempt to pull all referenced images
+          platforms: ${{ matrix.platform }}
           pull: true
-          # Push is a shorthand for --output=type=registry
-          push: true
-          # List of tags
-          tags: |
-            ${{ env.DOCKER_IMAGE_NAME }}:${{ matrix.version }}-${{ steps.datetime.outputs.time }}
-            ${{ env.DOCKER_IMAGE_NAME }}:${{ matrix.version }}
-          cache-from: type=registry,ref=${{ env.DOCKER_IMAGE_NAME }}:${{ matrix.version }}
-          cache-to: type=inline
-          platforms: linux/amd64,linux/arm64
+          provenance: false
+          outputs: type=oci,dest=${{ runner.temp }}/base-oci,tar=false
+          cache-from: type=gha,scope=base-${{ matrix.version }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=base-${{ matrix.version }}-${{ matrix.arch }}
 
-      - name: Build and push GN-INDE custom images
-        # You may pin to the exact commit or the version.
-        # uses: docker/build-push-action@2cdde995de11925a030ce8070c3d77a52ffcf1c0
-        uses: docker/build-push-action@v5.3.0
+      - name: Push Geonetwork image by digest (${{ matrix.platform }})
+        id: base-push
+        if: env.PUBLISH == 'true'
+        uses: docker/build-push-action@v7
         with:
-          # Build's context is the set of files located in the specified PATH or URL
+          context: .
+          file: Dockerfile
+          build-args: |
+            GEONETWORK_VERSION=${{ matrix.version }}
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.DOCKER_IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Build GN-INDE custom image (${{ matrix.platform }})
+        id: inde
+        uses: docker/build-push-action@v7
+        with:
           context: inde/
-          # Path to the Dockerfile
           file: inde/Dockerfile
           build-args: |
             GEONETWORK_IMAGE_REPOSITORY=${{ env.DOCKER_IMAGE_NAME }}
             GEONETWORK_IMAGE_TAG=${{ matrix.version }}
-          # Always attempt to pull all referenced images
-          pull: true
-          # Push is a shorthand for --output=type=registry
-          push: true
-          # List of tags
-          tags: |
-            ${{ env.DOCKER_IMAGE_NAME }}:${{ matrix.version }}-${{ steps.datetime.outputs.time }}-inde
-            ${{ env.DOCKER_IMAGE_NAME }}:${{ matrix.version }}-inde
-          cache-from: type=registry,ref=${{ env.DOCKER_IMAGE_NAME }}:${{ matrix.version }}-inde
-          cache-to: type=inline
-          platforms: linux/amd64,linux/arm64
-      
-      - name: Analyze for critical and high CVEs
-        id: docker-scout-cves
-        # if: ${{ github.event_name != 'pull_request_target' }}
+          build-contexts: |
+            ${{ env.DOCKER_IMAGE_NAME }}:${{ matrix.version }}=oci-layout://${{ runner.temp }}/base-oci@${{ steps.base.outputs.digest }}
+          platforms: ${{ matrix.platform }}
+          outputs: ${{ env.PUBLISH == 'true' && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', env.DOCKER_IMAGE_NAME) || 'type=cacheonly' }}
+
+      - name: Export digests
+        if: env.PUBLISH == 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests/base" "$RUNNER_TEMP/digests/inde"
+          touch "$RUNNER_TEMP/digests/base/${BASE_DIGEST#sha256:}"
+          touch "$RUNNER_TEMP/digests/inde/${INDE_DIGEST#sha256:}"
+        env:
+          BASE_DIGEST: ${{ steps.base-push.outputs.digest }}
+          INDE_DIGEST: ${{ steps.inde.outputs.digest }}
+
+      - name: Upload digests
+        if: env.PUBLISH == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.version }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: [prepare, build]
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      matrix:
+        version:
+          - 3.10.2
+    env:
+      TIMESTAMP: ${{ needs.prepare.outputs.timestamp }}
+      VERSION: ${{ matrix.version }}
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v8
+        with:
+          pattern: digests-${{ matrix.version }}-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create multi-arch manifests
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          docker buildx imagetools create \
+            -t "$DOCKER_IMAGE_NAME:$VERSION-$TIMESTAMP" \
+            -t "$DOCKER_IMAGE_NAME:$VERSION" \
+            $(printf "$DOCKER_IMAGE_NAME@sha256:%s " $(ls base))
+          docker buildx imagetools create \
+            -t "$DOCKER_IMAGE_NAME:$VERSION-inde-$TIMESTAMP" \
+            -t "$DOCKER_IMAGE_NAME:$VERSION-inde" \
+            $(printf "$DOCKER_IMAGE_NAME@sha256:%s " $(ls inde))
+
+      - name: Inspect images
+        run: |
+          docker buildx imagetools inspect "$DOCKER_IMAGE_NAME:$VERSION"
+          docker buildx imagetools inspect "$DOCKER_IMAGE_NAME:$VERSION-inde"
+
+      - name: Analyze base image for CVEs
         uses: docker/scout-action@v1
         with:
           command: cves
           image: ${{ env.DOCKER_IMAGE_NAME }}:${{ matrix.version }}
-          sarif-file: sarif.output.json
+          sarif-file: sarif-base.json
           summary: true
-      
-      - name: Upload SARIF result
-        id: upload-sarif
-        # if: ${{ github.event_name != 'pull_request_target' }}
-        uses: github/codeql-action/upload-sarif@v3
+
+      # The INDE image is the one usually deployed; it adds a recompiled jar on top of the base
+      - name: Analyze INDE image for CVEs
+        uses: docker/scout-action@v1
         with:
-          sarif_file: sarif.output.json
+          command: cves
+          image: ${{ env.DOCKER_IMAGE_NAME }}:${{ matrix.version }}-inde
+          sarif-file: sarif-inde.json
+          summary: true
+
+      # A distinct category per image keeps both results in code scanning
+      - name: Upload base SARIF result
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif-base.json
+          category: scout-${{ matrix.version }}
+
+      - name: Upload INDE SARIF result
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif-inde.json
+          category: scout-${{ matrix.version }}-inde
