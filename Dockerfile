@@ -66,8 +66,9 @@ COPY docker-entrypoint.sh /
 # Enable Rootless & move the default h2 db to /tmp (avoid change tomcat dir permissions)
 # TODO: add lucene mount point
 RUN sed -i -r "s/jdbc.database=.*$/jdbc.database=\/tmp\/gn/g" ./webapps/geonetwork/WEB-INF/config-db/jdbc.properties && \
-    mkdir -p ${GEONETWORK_DATA_DIR} && \
+    mkdir -p ${GEONETWORK_DATA_DIR} ./conf/Catalina/localhost && \
     chmod -R g=u \
+        ./conf/Catalina/ \
         ./webapps/geonetwork/WEB-INF/config-db/ \
         ./webapps/geonetwork/WEB-INF/config-node/ \
         ./webapps/geonetwork/WEB-INF/data/ \
