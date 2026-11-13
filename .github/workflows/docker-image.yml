@@ -186,6 +186,7 @@ jobs:
           command: cves
           image: ${{ env.DOCKER_IMAGE_NAME }}:${{ matrix.version }}
           sarif-file: sarif-base.json
+          only-severities: critical,high
           summary: true
 
       # The INDE image is the one usually deployed; it adds a recompiled jar on top of the base
@@ -195,7 +196,16 @@ jobs:
           command: cves
           image: ${{ env.DOCKER_IMAGE_NAME }}:${{ matrix.version }}-inde
           sarif-file: sarif-inde.json
+          only-severities: critical,high
           summary: true
+
+      # Scout may emit regions with line/column 0, which GitHub rejects (must be >= 1)
+      - name: Normalize SARIF regions
+        run: |
+          for f in sarif-base.json sarif-inde.json; do
+            jq 'walk(if type == "object" and has("startLine") then with_entries(if (.key | IN("startLine","startColumn","endLine","endColumn")) and (.value | type == "number") and .value < 1 then .value = 1 else . end) else . end)' "$f" > "$f.tmp"
+            mv "$f.tmp" "$f"
+          done
 
       # A distinct category per image keeps both results in code scanning
       - name: Upload base SARIF result
