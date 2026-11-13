@@ -80,4 +80,4 @@ fi
 
 export CATALINA_OPTS
 
-exec $@
+exec "$@"
