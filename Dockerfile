@@ -50,7 +50,10 @@ LABEL org.opencontainers.image.version=$GEONETWORK_VERSION
 LABEL org.opencontainers.image.source=https://github.com/nds-cprm/geonetwork-oci
 LABEL org.opencontainers.image.authors="Carlos Eduardo Mota <carlos.mota@sgb.gov.br>"
 
+# UMASK: read by catalina.sh (Tomcat default 0027). 0007 makes files created at runtime (H2 db,
+# index, data dir) writable by group 0, so any UID in group 0 can reuse the same volume (OpenShift)
 ENV JAVA_OPTS="-server -Djava.awt.headless=true -Xms2048m -Xmx2048m -XX:NewRatio=2 -XX:SurvivorRatio=10" \
+    UMASK="0007" \
     GEONETWORK_DB_TYPE="h2" \
     GEONETWORK_DATA_DIR=${GEONETWORK_DATA_DIR}
 
@@ -63,15 +66,20 @@ COPY --from=builder /root/geonetwork/install.log /install.log
 # Entrypoint
 COPY docker-entrypoint.sh /
 
-# Enable Rootless & move the default h2 db to /tmp (avoid change tomcat dir permissions)
+# Enable Rootless & keep the default h2 db inside the data dir, so it persists with it.
+# Spring resolves the placeholder from the environment at startup (default: build-time dir)
+# schemaplugin-uri-catalog.xml and images/harvesting are copied into the data dir at startup
+# and the copies keep the source mode, so they need g=u too (volume reused by another UID)
 # TODO: add lucene mount point
-RUN sed -i -r "s/jdbc.database=.*$/jdbc.database=\/tmp\/gn/g" ./webapps/geonetwork/WEB-INF/config-db/jdbc.properties && \
+RUN sed -i -r "s|^jdbc.database=.*|jdbc.database=\${GEONETWORK_DATA_DIR:${GEONETWORK_DATA_DIR}}/h2/gn|" ./webapps/geonetwork/WEB-INF/config-db/jdbc.properties && \
     mkdir -p ${GEONETWORK_DATA_DIR} ./conf/Catalina/localhost && \
     chmod -R g=u \
         ./conf/Catalina/ \
         ./webapps/geonetwork/WEB-INF/config-db/ \
         ./webapps/geonetwork/WEB-INF/config-node/ \
         ./webapps/geonetwork/WEB-INF/data/ \
+        ./webapps/geonetwork/WEB-INF/schemaplugin-uri-catalog.xml \
+        ./webapps/geonetwork/images/harvesting/ \
         ${GEONETWORK_DATA_DIR} && \
     chmod +x /docker-entrypoint.sh
 
