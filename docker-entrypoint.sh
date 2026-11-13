@@ -38,46 +38,41 @@ if [[ -d ${GEONETWORK_LUCENE_DIR} ]]; then
     CATALINA_OPTS="${CATALINA_OPTS} -Dgeonetwork.lucene.dir=${GEONETWORK_LUCENE_DIR}"
 fi
 
-GEONETWORK_DB_TYPE=$(echo $GEONETWORK_DB_TYPE | tr [:upper:] [:lower:])
+# Database: nothing is written here. srv.xml and jdbc.properties read GEONETWORK_DB_* through
+# Spring placeholders (see the Dockerfile); this block only validates and normalizes them
+GEONETWORK_DB_TYPE="${GEONETWORK_DB_TYPE:-h2}"
+GEONETWORK_DB_TYPE="${GEONETWORK_DB_TYPE,,}"
 
-# Database
-if [[ $GEONETWORK_DB_TYPE != "h2" ]]; then
-    # disable H2
-    sed -i -r 's/^\s*<import.*h2.*\/>$/<!--&-->/g' webapps/geonetwork/WEB-INF/config-node/srv.xml 
-    
-    if [[ $GEONETWORK_DB_TYPE == "postgis" ]]; then
-        GEONETWORK_DB_TYPE="postgres-${GEONETWORK_DB_TYPE}"
-    fi
-
-    if [[ -r "./webapps/geonetwork/WEB-INF/config-db/${GEONETWORK_DB_TYPE}.xml" ]]; then
-        sed -i -r "s/<\/beans>$/  <import resource=\"..\/config-db\/${GEONETWORK_DB_TYPE}.xml\" \/>\n<\/beans>/g" webapps/geonetwork/WEB-INF/config-node/srv.xml
-
-        if [[ -n $GEONETWORK_DB_HOST ]]; then
-            sed -i -r "s/jdbc.host=.*$/jdbc.host=${GEONETWORK_DB_HOST}/g" webapps/geonetwork/WEB-INF/config-db/jdbc.properties
+case "${GEONETWORK_DB_TYPE}" in
+    h2)
+        # The h2 file and its credentials come from jdbc.properties defaults
+        unset GEONETWORK_DB_HOST GEONETWORK_DB_PORT GEONETWORK_DB_DATABASE \
+              GEONETWORK_DB_USERNAME GEONETWORK_DB_PASSWORD GEONETWORK_DB_PASSWORD_FILE
+        ;;
+    postgres|postgis)
+        # Password from a mounted secret file, if given
+        if [[ -n ${GEONETWORK_DB_PASSWORD_FILE} ]]; then
+            if [[ ! -r ${GEONETWORK_DB_PASSWORD_FILE} ]]; then
+                echo "GEONETWORK_DB_PASSWORD_FILE not readable: ${GEONETWORK_DB_PASSWORD_FILE}"
+                exit 1
+            fi
+            GEONETWORK_DB_PASSWORD="$(< "${GEONETWORK_DB_PASSWORD_FILE}")"
+            export GEONETWORK_DB_PASSWORD
+            unset GEONETWORK_DB_PASSWORD_FILE
         fi
 
-        if [[ -n $GEONETWORK_DB_PORT ]]; then
-            sed -i -r "s/jdbc.port=.*$/jdbc.port=${GEONETWORK_DB_PORT}/g" webapps/geonetwork/WEB-INF/config-db/jdbc.properties
+        if [[ -z ${GEONETWORK_DB_DATABASE} ]]; then
+            echo "GEONETWORK_DB_DATABASE is required when GEONETWORK_DB_TYPE=${GEONETWORK_DB_TYPE}"
+            exit 1
         fi
-
-        if [[ -n $GEONETWORK_DB_DATABASE ]]; then
-            sed -i -r "s/jdbc.database=.*$/jdbc.database=${GEONETWORK_DB_DATABASE}/g" webapps/geonetwork/WEB-INF/config-db/jdbc.properties
-        fi
-
-        if [[ -n $GEONETWORK_DB_USERNAME ]]; then
-            sed -i -r "s/jdbc.username=.*$/jdbc.username=${GEONETWORK_DB_USERNAME}/g" webapps/geonetwork/WEB-INF/config-db/jdbc.properties
-        fi
-
-        if [[ -n $GEONETWORK_DB_PASSWORD ]]; then
-            sed -i -r "s/jdbc.password=.*$/jdbc.password=${GEONETWORK_DB_PASSWORD}/g" webapps/geonetwork/WEB-INF/config-db/jdbc.properties
-        fi 
-    else
+        ;;
+    *)
         echo "GEONETWORK_DB_TYPE incorrect: ${GEONETWORK_DB_TYPE}"
         echo "Possible values: h2, postgres, postgis"
         exit 1
-    fi   
-fi
+        ;;
+esac
 
-export CATALINA_OPTS
+export GEONETWORK_DB_TYPE CATALINA_OPTS
 
 exec "$@"

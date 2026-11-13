@@ -70,17 +70,37 @@ COPY --from=builder /root/geonetwork/install.log /install.log
 # Entrypoint
 COPY docker-entrypoint.sh /
 
-# Enable Rootless & keep the default h2 db inside the data dir, so it persists with it.
-# Spring resolves the placeholder from the environment at startup (default: build-time dir)
+# Database configured only through environment variables, resolved by Spring at startup, so
+# the webapp is never edited at runtime (read-only rootfs, restarts, any password characters):
+# - srv.xml imports config-db/${GEONETWORK_DB_TYPE}.xml (postgis.xml aliases postgres-postgis.xml)
+# - jdbc.properties reads GEONETWORK_DB_*; the default database is the h2 file in the data dir
+# The build fails if the files do not have the expected layout
+RUN W=./webapps/geonetwork/WEB-INF && \
+    sed -i -E 's|^\s*<import resource="\.\./config-db/h2\.xml"/>|  <import resource="../config-db/${GEONETWORK_DB_TYPE:h2}.xml"/>|' $W/config-node/srv.xml && \
+    grep -q 'config-db/${GEONETWORK_DB_TYPE:h2}.xml' $W/config-node/srv.xml && \
+    printf '%s\n' \
+        '<?xml version="1.0" encoding="UTF-8"?>' \
+        '<beans xmlns="http://www.springframework.org/schema/beans"' \
+        '       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"' \
+        '       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">' \
+        '  <import resource="postgres-postgis.xml"/>' \
+        '</beans>' > $W/config-db/postgis.xml && \
+    sed -i -E \
+        -e 's|^jdbc\.host=.*|jdbc.host=${GEONETWORK_DB_HOST:localhost}|' \
+        -e 's|^jdbc\.port=.*|jdbc.port=${GEONETWORK_DB_PORT:5432}|' \
+        -e "s|^jdbc\.database=.*|jdbc.database=\${GEONETWORK_DB_DATABASE:\${GEONETWORK_DATA_DIR:${GEONETWORK_DATA_DIR}}/h2/gn}|" \
+        -e 's|^jdbc\.username=.*|jdbc.username=${GEONETWORK_DB_USERNAME:www-data}|' \
+        -e 's|^jdbc\.password=.*|jdbc.password=${GEONETWORK_DB_PASSWORD:www-data}|' \
+        $W/config-db/jdbc.properties && \
+    [ "$(grep -c -E '^jdbc\.(host|port|database|username|password)=\$\{GEONETWORK_' $W/config-db/jdbc.properties)" -eq 5 ]
+
+# Enable Rootless: directories written at runtime are writable by group 0 (OpenShift)
 # schemaplugin-uri-catalog.xml and images/harvesting are copied into the data dir at startup
 # and the copies keep the source mode, so they need g=u too (volume reused by another UID)
 # TODO: add lucene mount point
-RUN sed -i -r "s|^jdbc.database=.*|jdbc.database=\${GEONETWORK_DATA_DIR:${GEONETWORK_DATA_DIR}}/h2/gn|" ./webapps/geonetwork/WEB-INF/config-db/jdbc.properties && \
-    mkdir -p ${GEONETWORK_DATA_DIR} ./conf/Catalina/localhost && \
+RUN mkdir -p ${GEONETWORK_DATA_DIR} ./conf/Catalina/localhost && \
     chmod -R g=u \
         ./conf/Catalina/ \
-        ./webapps/geonetwork/WEB-INF/config-db/ \
-        ./webapps/geonetwork/WEB-INF/config-node/ \
         ./webapps/geonetwork/WEB-INF/data/ \
         ./webapps/geonetwork/WEB-INF/schemaplugin-uri-catalog.xml \
         ./webapps/geonetwork/images/harvesting/ \
