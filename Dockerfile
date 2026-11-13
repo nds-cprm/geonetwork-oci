@@ -1,11 +1,13 @@
 # https://geonetwork-opensource.org/manuals/3.10.x/en/install-guide/installing-from-source-code.html
 ARG MAVEN_IMAGE_TAG=3.8-eclipse-temurin-8
 ARG TOMCAT_IMAGE_TAG=8.5-jre8-temurin-jammy
+# Global, so both stages share the default (the release stage uses it in the version label)
+ARG GEONETWORK_VERSION=3.10.2
 
 FROM docker.io/library/maven:${MAVEN_IMAGE_TAG} AS builder
 
 ARG GEONETWORK_GIT_URL=https://github.com/geonetwork/core-geonetwork.git
-ARG GEONETWORK_VERSION=3.10.2
+ARG GEONETWORK_VERSION
 ARG MAVEN_OPTS="-Xmx512M"
 
 ENV MAVEN_OPTS=${MAVEN_OPTS}
@@ -47,6 +49,8 @@ LABEL org.opencontainers.image.title="Geonetwork SGB/CPRM"
 LABEL org.opencontainers.image.description="Geonetwork customizado pelo SGB/CPRM"
 LABEL org.opencontainers.image.vendor="SGB/CPRM"
 LABEL org.opencontainers.image.version=$GEONETWORK_VERSION
+# Overrides the "ubuntu" value inherited from the base image (labels cannot be removed)
+LABEL org.opencontainers.image.ref.name=$GEONETWORK_VERSION
 LABEL org.opencontainers.image.source=https://github.com/nds-cprm/geonetwork-oci
 LABEL org.opencontainers.image.authors="Carlos Eduardo Mota <carlos.mota@sgb.gov.br>"
 

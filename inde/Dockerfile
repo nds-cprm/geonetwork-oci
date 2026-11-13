@@ -29,6 +29,7 @@ ARG GEONETWORK_IMAGE_TAG
 LABEL org.opencontainers.image.title="Geonetwork INDE"
 LABEL org.opencontainers.image.description="Geonetwork customizado pelo SGB/CPRM para uso na INDE"
 LABEL org.opencontainers.image.version="$GEONETWORK_IMAGE_TAG-inde"
+LABEL org.opencontainers.image.ref.name="$GEONETWORK_IMAGE_TAG-inde"
 LABEL org.opencontainers.image.vendor="SGB/CPRM"
 
 # COPY --from keeps the modes set in the overlay stage
