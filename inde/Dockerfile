@@ -12,12 +12,14 @@ USER root
 COPY ["src/perfis/mgb/", "src/perfis/mgb2/", "/overlay/WEB-INF/data/config/schema_plugins/"]
 COPY src/alteracoes/geonetwork/ /overlay/
 
-# Enable MGB Profiles in geonetwork
+# Enable MGB Profiles in geonetwork: imports go right before the closing </beans> of the root
+# node; the build fails if both imports are not there
 # Permissions: read-only by default, group 0 gets the owner bits where the base image does
 # (config-db, data), so arbitrary UIDs in group 0 can write there (OpenShift)
 RUN mv /overlay/WEB-INF/data/config/schema_plugins/config-spring-mgb*.xml /overlay/WEB-INF/ && \
-    sed -i '49i <import resource="config-spring-mgb.xml"/>\n<import resource="config-spring-mgb-2.xml"/>' \
+    sed -i '/^<\/beans>/i\  <import resource="config-spring-mgb.xml"/>\n  <import resource="config-spring-mgb-2.xml"/>' \
         /overlay/WEB-INF/config-spring-geonetwork.xml && \
+    [ "$(grep -c '<import resource="config-spring-mgb' /overlay/WEB-INF/config-spring-geonetwork.xml)" -eq 2 ] && \
     chmod -R u=rwX,go=rX /overlay && \
     chmod -R g=u /overlay/WEB-INF/config-db /overlay/WEB-INF/data
 
