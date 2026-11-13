@@ -95,6 +95,17 @@ RUN sed -i -r \
         mv "$f.tmp" "$f"; \
     done
 
+# Restrict the built-in health checks to the Monitor role. Spring Security applies the first
+# matching rule, and the generic "/[a-zA-Z0-9_\-]+" permitAll rule shadowed "/\w*healthcheck",
+# so the rule is moved above it. The build fails if the file layout changes
+RUN f=./webapps/geonetwork/WEB-INF/config-security/config-security-mapping.xml && \
+    sed -i -E \
+        -e '/<sec:intercept-url pattern="\/\\w\*healthcheck"/,/\/>/d' \
+        -e "0,/<sec:intercept-url pattern=\"\/\[a-zA-Z0-9_\\\\-\]\+\" access=\"permitAll\"\/>/s//<sec:intercept-url pattern=\"\/\\\\w*healthcheck\" access=\"hasRole('Monitor')\"\/>\n        &/" \
+        "$f" && \
+    grep -n -m1 -E 'healthcheck|pattern="/\[a-zA-Z0-9_\\-\]\+"' "$f" | grep -q healthcheck && \
+    [ "$(grep -c healthcheck "$f")" -eq 1 ]
+
 # nss_wrapper: passwd/group entries for UIDs absent from /etc/passwd (OpenShift arbitrary UID)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends libnss-wrapper && \
